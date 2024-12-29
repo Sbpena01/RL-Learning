@@ -2,6 +2,7 @@ import numpy as np
 import pygame
 
 from Car import Car
+from Obstacle import Obstacle
 
 SCREEN_HEIGHT = 950
 SCREEN_WIDTH = 1600
@@ -15,14 +16,16 @@ def main(args=None):
     screen.fill(BACKGROUND_COLOR)
     font = pygame.font.Font(None, size=16)
     clock = pygame.time.Clock()
-
-    # Temp car to experiment with drawing a surface onto pygame.
     car = Car((100, 100))
+
+    # Test obstacle
+    obstacle = Obstacle((500, 500), 100, 200)
 
     # Game Loop
     running = True
     while running:
         clock.tick(60)  # 60 fps
+            
         for event in pygame.event.get():  
             if event.type == pygame.QUIT:  
                 running = False
@@ -45,13 +48,23 @@ def main(args=None):
         dt = clock.get_time() / 1000  # milliseconds to seconds
         car.step(dt)
 
+        # Collision Check
+        if car.checkObstacleCollision(obstacle):
+            collision_text = font.render(f"Car has crashed!", True, (255,0,0))
+            crashed = True
+        else:
+            collision_text = font.render(f"Car is safe.", True, (0,255,0))
+
         # Draw the environment on the screen
         screen.fill(BACKGROUND_COLOR)
         position_text = font.render(f"Car Position: {car.position[0]:.2f}, {car.position[1]:.2f}", True, (0,0,0))
         angle_text = font.render(f"Car Angle: {np.rad2deg(car.theta):.2f}", True, (0,0,0))
         screen.blit(position_text, (10, 10))
         screen.blit(angle_text, (10, 10+font.get_linesize()))
-        car.draw(screen)
+        screen.blit(collision_text, (500, 10))
+        obstacle.draw(screen)
+
+        car.draw(screen, draw_hitbox=True)
         pygame.display.flip()
     pygame.quit()
 
