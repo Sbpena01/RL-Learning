@@ -12,6 +12,11 @@ class Node():
         self.state = state
         self.parent = parent
         self.cost = cost
+        self.distance_travelled = 0.0
+        
+        # Visual Settings
+        self.color = (0,0,255)
+        self.radius = 1
 
     def __lt__(self, other: 'Node'):
         return self.cost < other.cost
@@ -19,8 +24,8 @@ class Node():
     def getGridCell(self, grid: OccupancyGrid):
         return grid.worldToGrid(self.state.position)
     
-    def draw(self, source:pygame.Surface, color=(0,0,255)):
-        pygame.draw.circle(source, color, (self.state.position[0]*50, self.state.position[1]*50), 2.0)
+    def draw(self, source:pygame.Surface):
+        pygame.draw.circle(source, self.color, (self.state.position[0]*50, self.state.position[1]*50), self.radius)
 
 class MotionPlanner():
     def __init__(self, start: State, goal: State, car: Car, grid: OccupancyGrid):
@@ -28,8 +33,8 @@ class MotionPlanner():
         self.goal = goal
         self.car = car
         self.grid = grid
-        self.dt = 0.2
-        self.max_iters = 1000
+        self.dt = 0.1
+        self.max_iters = 2000
         self.nodes: list[Node] = []
 
     def plan(self, source: pygame.Surface = None):
@@ -58,11 +63,16 @@ class MotionPlanner():
             if current_gridcell in visited_gridcells:
                 continue
             visited_gridcells.append(current_gridcell)
+            current_node.color = (0,200,255)
+            current_node.radius = 3
             counter += 1
-            
 
             # Expand the node
             new_nodes = self.expandNode(current_node)
+
+            if len(new_nodes) == 0:  # meaning we found a dead end
+                visited_gridcells.remove(current_gridcell)
+                continue
             
             # Add all new nodes to frontier
             for node in new_nodes:
@@ -70,6 +80,10 @@ class MotionPlanner():
                 queue.put(node)
             
         self.resetCar()
+        if not queue.empty():
+            print("Max iterations reached")
+        else:
+            print("No Path Found")
         return None
 
     def checkGoal(self, node: Node):
@@ -83,6 +97,7 @@ class MotionPlanner():
         while current is not None:
             path.append(current)
             current = current.parent
+        path.reverse()
         return path
 
     def expandNode(self, node: Node):
@@ -92,14 +107,18 @@ class MotionPlanner():
             state = self.iterateThrough(node.state, action, self.dt)
             if state is None:
                 continue
-            cost = self.calculateCost(state)
-            new_node = Node(state, node, cost=cost)
+            new_node = Node(state, node)
+            distance_between_states = Utils.euclideanDistance(new_node.state.position, node.state.position)
+            new_node.distance_travelled = node.distance_travelled + distance_between_states
+            cost = self.calculateCost(new_node, node)
+            new_node.cost = cost
             new_nodes.append(new_node)
         return new_nodes
 
     def actions(self):
         velocities = [-MAX_V, MAX_V]
         angles = [-MAX_PHI, 0, MAX_PHI]
+        # angles = np.linspace(-MAX_PHI, MAX_PHI, 5)
         actions = []
         for v in velocities:
             for phi in angles:
@@ -115,7 +134,6 @@ class MotionPlanner():
         for _ in range(num_steps):
             self.car.step(increment)
             if self.grid.environment.checkCarCollision(self.car):
-                print("Collision Detected")
                 return None
         return State(self.car.position, self.car.theta, self.car.v, self.car.phi)
     
@@ -125,18 +143,21 @@ class MotionPlanner():
         self.car.setVelocity(self.start.v)
         self.car.setSteeringAngle(self.start.phi)
 
-    def calculateCost(self, state: State):
-        distance_cost = Utils.euclideanDistance(state.position, self.goal.position)
-        # reverse_cost = 50 if state.v < 0 else 0
-        return distance_cost
+    def calculateCost(self, curr_node: Node, prev_node: Node):
+        hueristic = Utils.euclideanDistance(curr_node.state.position, self.goal.position)
+        reverse_cost = 50 if curr_node.state.v < 0 else 0
+        distance_cost = curr_node.distance_travelled
+        return hueristic + reverse_cost + distance_cost
     
     def draw(self, source: pygame.Surface):
         for node in self.nodes:
             node.draw(source)
         starting_node = Node(self.start)
+        starting_node.color = (0,100,200)
         goal_node = Node(self.goal)
-        starting_node.draw(source, color=(0,100,200))
-        goal_node.draw(source, color=(0,200,0))
+        goal_node.color = (0,200,0)
+        starting_node.draw(source)
+        goal_node.draw(source)
     
     def drawPath(self, path: list[Node], source: pygame.Surface):
         for node in path:
